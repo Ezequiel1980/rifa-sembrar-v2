@@ -686,6 +686,10 @@ function RifaApp() {
       notify("Error al guardar la reserva.", "error");
     }
   };
+  // Admin ticket filters
+  const [ticketSearch, setTicketSearch]           = useState("");
+  const [ticketStatusFilter, setTicketStatusFilter] = useState("all"); // "all" | "paid" | "reserved"
+
   // Config edit state
   const [editConfig, setEditConfig] = useState(false);
   const [configDraft, setConfigDraft] = useState({ ...rifaConfig });
@@ -1307,7 +1311,43 @@ function RifaApp() {
 
                 {/* Ticket Management */}
                 <div style={{ background: surface, borderRadius: 16, padding: isMobile ? 14 : 24, border: `1px solid ${border}` }}>
-                  <h3 style={{ fontWeight: 800, fontSize: 16, marginBottom: 16, marginTop: 0 }}>🎟️ Gestión de Tickets</h3>
+                  <h3 style={{ fontWeight: 800, fontSize: 16, marginBottom: 14, marginTop: 0 }}>🎟️ Gestión de Tickets</h3>
+
+                  {/* Filters */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                    <input
+                      type="text"
+                      placeholder="🔍 Buscar por nombre, apellido o número…"
+                      value={ticketSearch}
+                      onChange={e => setTicketSearch(e.target.value)}
+                      style={{
+                        width: "100%", padding: "9px 12px", borderRadius: 8, fontSize: 13,
+                        background: surfaceAlt, border: `1px solid ${border}`, color: textPrimary,
+                        boxSizing: "border-box", outline: "none",
+                      }}
+                    />
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {[
+                        { value: "all",      label: "Todos" },
+                        { value: "paid",     label: "✅ Pagados" },
+                        { value: "reserved", label: "⏳ Reservados" },
+                      ].map(opt => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setTicketStatusFilter(opt.value)}
+                          style={{
+                            flex: 1, padding: "7px 4px", borderRadius: 7, fontSize: 12, fontWeight: 700,
+                            cursor: "pointer",
+                            border: `2px solid ${ticketStatusFilter === opt.value ? "#6366F1" : border}`,
+                            background: ticketStatusFilter === opt.value ? "#6366F1" : "transparent",
+                            color: ticketStatusFilter === opt.value ? "white" : textSecondary,
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   {/* Inline edit form — desktop only; mobile uses bottom sheet modal */}
                   {!isMobile && (
@@ -1354,7 +1394,19 @@ function RifaApp() {
                   )}
 
                   <div style={{ maxHeight: isMobile ? "none" : 340, overflowY: isMobile ? "visible" : "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                    {Object.values(tickets).sort((a, b) => a.number - b.number).map(t => (
+                    {Object.values(tickets)
+                      .filter(t => {
+                        if (ticketStatusFilter !== "all" && t.status !== ticketStatusFilter) return false;
+                        if (!ticketSearch.trim()) return true;
+                        const q = ticketSearch.trim().toLowerCase();
+                        return (
+                          String(t.number).includes(q) ||
+                          (t.userName || "").toLowerCase().includes(q) ||
+                          pad(t.number, rifaConfig.totalNumbers).includes(q)
+                        );
+                      })
+                      .sort((a, b) => a.number - b.number)
+                      .map(t => (
                       <div key={t.number} style={{
                         display: "flex", alignItems: "center", gap: 8, padding: isMobile ? "12px 10px" : "10px 12px",
                         borderRadius: 10, background: surfaceAlt, border: `1px solid ${border}`,
@@ -1398,10 +1450,20 @@ function RifaApp() {
                           </button>
                         </div>
                       </div>
-                    ))}
+                      ))}
                     {Object.keys(tickets).length === 0 && (
                       <p style={{ textAlign: "center", color: textSecondary, padding: 24, fontSize: 13 }}>
                         No hay tickets registrados aún.
+                      </p>
+                    )}
+                    {Object.keys(tickets).length > 0 && Object.values(tickets).filter(t => {
+                      if (ticketStatusFilter !== "all" && t.status !== ticketStatusFilter) return false;
+                      if (!ticketSearch.trim()) return true;
+                      const q = ticketSearch.trim().toLowerCase();
+                      return String(t.number).includes(q) || (t.userName || "").toLowerCase().includes(q) || pad(t.number, rifaConfig.totalNumbers).includes(q);
+                    }).length === 0 && (
+                      <p style={{ textAlign: "center", color: textSecondary, padding: 24, fontSize: 13 }}>
+                        Sin resultados para la búsqueda.
                       </p>
                     )}
                   </div>

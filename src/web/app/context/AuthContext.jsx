@@ -85,7 +85,7 @@ export function AuthProvider({ children }) {
     return result.user;
   }
 
-  async function registerWithEmail(email, password, displayName) {
+  async function registerWithEmail(email, password, displayName, phone = "") {
     const result = await createUserWithEmailAndPassword(auth, email, password);
 
     // Actualizar displayName en Firebase Auth
@@ -97,6 +97,7 @@ export function AuthProvider({ children }) {
       email:       email,
       displayName: displayName,
       photoURL:    "",
+      phone:       phone,
       role:        "user",
       createdAt:   serverTimestamp(),
     });

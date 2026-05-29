@@ -9,6 +9,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
 
 export default function LoginPage() {
   const { user, loading, loginWithGoogle, loginWithEmail, registerWithEmail } = useAuth();
@@ -18,8 +20,13 @@ export default function LoginPage() {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [name, setName]         = useState("");
+  const [phone, setPhone]       = useState("");
   const [error, setError]       = useState("");
   const [busy, setBusy]         = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [pendingUid, setPendingUid]         = useState(null);
+  const [phoneInput, setPhoneInput]         = useState("");
+  const [phoneBusy, setPhoneBusy]           = useState(false);
 
   // Si ya está logueado, redirigir al inicio
   useEffect(() => {
@@ -34,12 +41,33 @@ export default function LoginPage() {
     setError("");
     setBusy(true);
     try {
-      await loginWithGoogle();
+      const firebaseUser = await loginWithGoogle();
+      const snap = await getDoc(doc(db, "users", firebaseUser.uid));
+      if (!snap.exists() || !snap.data().phone) {
+        setPendingUid(firebaseUser.uid);
+        setShowPhoneModal(true);
+        setBusy(false);
+        return;
+      }
       router.replace("/");
     } catch (e) {
       setError(friendlyError(e.code));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleSavePhone() {
+    if (!phoneInput.trim()) return;
+    setPhoneBusy(true);
+    try {
+      await updateDoc(doc(db, "users", pendingUid), { phone: phoneInput.trim() });
+      router.replace("/");
+    } catch {
+      // silent — redirect anyway
+      router.replace("/");
+    } finally {
+      setPhoneBusy(false);
     }
   }
 
@@ -52,7 +80,7 @@ export default function LoginPage() {
         await loginWithEmail(email, password);
       } else {
         if (!name.trim()) { setError("Ingresá tu nombre."); setBusy(false); return; }
-        await registerWithEmail(email, password, name.trim());
+        await registerWithEmail(email, password, name.trim(), phone.trim());
       }
       router.replace("/");
     } catch (e) {
@@ -155,18 +183,25 @@ export default function LoginPage() {
           <AnimatePresence>
             {mode === "register" && (
               <motion.div
-                key="name-field"
+                key="register-fields"
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
-                style={{ overflow: "hidden" }}
+                style={{ overflow: "hidden", display: "flex", flexDirection: "column", gap: 12 }}
               >
                 <input
                   type="text"
-                  placeholder="Tu nombre"
+                  placeholder="Tu nombre y apellido"
                   value={name}
                   onChange={e => setName(e.target.value)}
                   required={mode === "register"}
+                  style={inputStyle}
+                />
+                <input
+                  type="tel"
+                  placeholder="Número de contacto (ej: +54 9 11 1234-5678)"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
                   style={inputStyle}
                 />
               </motion.div>
@@ -243,6 +278,84 @@ export default function LoginPage() {
           </button>
         </p>
       </motion.div>
+
+      {/* Phone Modal — appears after Google login if phone is missing */}
+      <AnimatePresence>
+        {showPhoneModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: "fixed", inset: 0,
+              background: "rgba(0,0,0,0.7)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "24px 16px", zIndex: 999,
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.88, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ type: "spring", stiffness: 280, damping: 26 }}
+              style={{
+                width: "100%", maxWidth: 380,
+                background: "#1E293B",
+                borderRadius: 20,
+                padding: "32px 28px",
+                border: "1px solid #334155",
+                boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+              }}
+            >
+              <div style={{ textAlign: "center", marginBottom: 24 }}>
+                <p style={{ fontSize: 42, margin: "0 0 10px" }}>📱</p>
+                <h2 style={{ fontWeight: 900, fontSize: 20, color: "#F1F5F9", margin: "0 0 8px" }}>
+                  ¿Cuál es tu número?
+                </h2>
+                <p style={{ fontSize: 13, color: "#64748B", margin: 0, lineHeight: 1.5 }}>
+                  Ingresá tu número de contacto para que podamos comunicarnos si ganás.
+                </p>
+              </div>
+              <input
+                type="tel"
+                placeholder="+54 9 11 1234-5678"
+                value={phoneInput}
+                onChange={e => setPhoneInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleSavePhone()}
+                autoFocus
+                style={{ ...inputStyle, marginBottom: 16, fontSize: 15 }}
+              />
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onClick={handleSavePhone}
+                disabled={phoneBusy}
+                style={{
+                  width: "100%", padding: "13px 0",
+                  borderRadius: 12, border: "none",
+                  background: phoneBusy ? "#4F46E5" : "linear-gradient(135deg, #6366F1, #8B5CF6)",
+                  color: "white", fontSize: 14, fontWeight: 800,
+                  cursor: phoneBusy ? "not-allowed" : "pointer",
+                  boxShadow: "0 4px 20px rgba(99,102,241,0.4)",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                {phoneBusy ? <Spinner /> : "Guardar y continuar"}
+              </motion.button>
+              <button
+                onClick={() => router.replace("/")}
+                style={{
+                  width: "100%", padding: "10px 0",
+                  background: "none", border: "none",
+                  color: "#64748B", fontSize: 13, cursor: "pointer", fontWeight: 500,
+                }}
+              >
+                Omitir por ahora
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
