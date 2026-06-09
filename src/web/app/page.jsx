@@ -489,9 +489,15 @@ function NumberGrid({ totalNumbers, tickets, selectedNums, onToggle, darkMode, c
 
   const isClickable = (n) => !tickets[n];
 
-  const cols = totalNumbers <= 100 ? 10 : totalNumbers <= 200 ? 10 : 20;
-  const cellPad = isMobile ? "10px 2px" : totalNumbers <= 100 ? "8px 4px" : "5px 2px";
-  const cellFont = isMobile ? 12 : totalNumbers <= 100 ? 13 : 11;
+  const cols = isMobile
+    ? (totalNumbers <= 100 ? 10 : totalNumbers <= 500 ? 8 : 5)
+    : (totalNumbers <= 100 ? 10 : totalNumbers <= 200 ? 10 : 20);
+  const cellPad = isMobile
+    ? (totalNumbers <= 100 ? "8px 2px" : "6px 1px")
+    : (totalNumbers <= 100 ? "8px 4px" : "5px 2px");
+  const cellFont = isMobile
+    ? (totalNumbers <= 100 ? 13 : totalNumbers <= 500 ? 11 : 10)
+    : (totalNumbers <= 100 ? 13 : 11);
 
   return (
     <div style={{
