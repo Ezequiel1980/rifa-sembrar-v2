@@ -11,11 +11,11 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
     }
 
-    // users — lectura propia o admin; creación propia (primer login); edición propia o admin
+    // users — lectura propia o admin; creación propia (primer login); edición propia solo campos no críticos
     match /users/{userId} {
       allow read:   if request.auth.uid == userId || isAdmin();
       allow create: if request.auth.uid == userId;
-      allow update: if request.auth.uid == userId || isAdmin();
+      allow update: if isAdmin() || (request.auth.uid == userId && request.resource.data.role == resource.data.role);
       allow delete: if isAdmin();
     }
 
@@ -25,12 +25,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // tickets — lectura autenticados; creación usuario propio; edición/borrado admin
+    // tickets — lectura autenticados; creación usuario propio con status reservado; edición/borrado admin
+    // usuarios pueden borrar solo sus propias reservas (no tickets pagados)
     match /tickets/{ticketId} {
       allow read:   if isAuth();
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid && request.resource.data.status == "reserved";
       allow update: if isAdmin();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isAuth() && resource.data.userId == request.auth.uid && resource.data.status == "reserved");
     }
   }
 }

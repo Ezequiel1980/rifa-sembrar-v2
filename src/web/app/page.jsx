@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "./context/AuthContext";
 import AuthGuard from "./components/AuthGuard";
 import { db } from "./lib/firebase";
-import { collection, doc, setDoc, updateDoc, deleteDoc, getDocs, onSnapshot, getDoc } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc, deleteDoc, getDocs, onSnapshot, getDoc, runTransaction } from "firebase/firestore";
 
 
 
@@ -672,21 +672,27 @@ function RifaApp() {
   const [notification, setNotification] = useState(null);
   const reserveNumbers = async () => {
     if (selectedNums.length === 0) return;
+    const taken = [];
     try {
-      for (const num of selectedNums) {
+      await Promise.all(selectedNums.map(async (num) => {
         const ticketRef = doc(db, "tickets", num.toString());
-        await setDoc(ticketRef, {
-          number: num,
-          status: "reserved",
-          userId: currentUserId,
-          userName: user?.displayName || "Invitado",
-          userEmail: user?.email || "",
-          createdAt: new Date().toISOString(),
+        await runTransaction(db, async (tx) => {
+          const snap = await tx.get(ticketRef);
+          if (snap.exists()) { taken.push(num); return; }
+          tx.set(ticketRef, {
+            number: num,
+            status: "reserved",
+            userId: currentUserId,
+            userName: user?.displayName || "Invitado",
+            userEmail: user?.email || "",
+            createdAt: new Date().toISOString(),
+          });
         });
-      }
+      }));
+      const reserved = selectedNums.filter(n => !taken.includes(n));
       setSelectedNums([]);
-      setShowPayModal(true);
-      notify("¡Reserva realizada! Enviá el comprobante de pago.");
+      if (taken.length > 0) notify(`El número ${taken.join(", ")} ya fue tomado.`, "error");
+      if (reserved.length > 0) { setShowPayModal(true); notify("¡Reserva realizada! Enviá el comprobante de pago."); }
     } catch (error) {
       console.error("Error al reservar:", error);
       notify("Error al guardar la reserva.", "error");
@@ -743,6 +749,7 @@ function RifaApp() {
 
   // ── Admin: confirm payment ──
   const confirmPayment = async (n) => {
+    if (!isAdmin) return;
     try {
       await updateDoc(doc(db, "tickets", n.toString()), { status: "paid" });
       notify(`✅ Pago confirmado para #${pad(n, rifaConfig.totalNumbers)}`);
@@ -791,7 +798,9 @@ function RifaApp() {
     const alreadyDrawn = drawResults.map(r => r.number);
     const pool = soldNumbers.filter(n => !alreadyDrawn.includes(n));
     if (!pool.length) return null;
-    return pool[Math.floor(Math.random() * pool.length)];
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return pool[arr[0] % pool.length];
   }, [soldNumbers, drawResults]);
 
   // Called by Bolillero onComplete — records the result AFTER animation ends
@@ -815,6 +824,7 @@ function RifaApp() {
 
   // ── Save config ──
   const saveConfig = async () => {
+    if (!isAdmin) return;
     try {
       await setDoc(doc(db, "config", "rifa"), configDraft);
       setEditConfig(false);
@@ -827,6 +837,7 @@ function RifaApp() {
 
   // ── Reset rifa ──
   const resetRifa = async () => {
+    if (!isAdmin) return;
     try {
       const snap = await getDocs(collection(db, "tickets"));
       await Promise.all([
